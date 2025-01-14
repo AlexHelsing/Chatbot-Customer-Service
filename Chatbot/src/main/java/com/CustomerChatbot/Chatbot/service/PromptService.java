@@ -1,5 +1,7 @@
 package com.CustomerChatbot.Chatbot.service;
 
+import com.CustomerChatbot.Chatbot.model.Order;
+import com.CustomerChatbot.Chatbot.repository.OrderRepository;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -15,15 +17,19 @@ public class PromptService {
 
     private final String systemPrompt;
     private final Map<String, String> companyInfo;
+    private final EmbeddingService embeddingService;
+    private final OrderRepository orderRepository;
 
-    public PromptService() {
+    public PromptService(OrderRepository orderRepository, EmbeddingService embeddingService) {
+        this.orderRepository = orderRepository;
+        this.embeddingService = embeddingService;
+
         this.companyInfo = Map.of(
                 "companyName", "JzGolv",
                 "businessHours", "Monday-Friday 9am-5pm EST",
                 "supportEmail", "jzgolv@info.se"
         );
 
-        // Create system prompt with company info directly interpolated
         this.systemPrompt = String.format("""
             You are a helpful customer service representative for %s. Follow these guidelines:
             
@@ -42,9 +48,9 @@ public class PromptService {
             - Business Hours: %s
             - Support Email: %s
             """,
-                companyInfo.get("JzGolv"),
-                companyInfo.get("Monday-Friday 9am-5pm EST"),
-                companyInfo.get("jzgolv@info.se")
+                companyInfo.get("companyName"),
+                companyInfo.get("businessHours"),
+                companyInfo.get("supportEmail")
         );
     }
 
@@ -56,5 +62,33 @@ public class PromptService {
         messages.add(new UserMessage(userInput));
 
         return new Prompt(messages);
+    }
+
+    public float[] generateUserEmbedding(String userInput) {
+        try {
+            return embeddingService.generateEmbedding(userInput);
+        } catch (Exception e) {
+            throw new RuntimeException("Error generating embedding for user input: " + e.getMessage(), e);
+        }
+    }
+
+    public void addOrder(String orderDetails, String customerName, String customerId, String orderStatus) {
+        try {
+            float[] embedding = embeddingService.generateEmbedding(orderDetails);
+
+            Order order = new Order();
+            order.setCustomerName(customerName);
+            order.setOrderStatus(orderStatus);
+            order.setEmbedding(embedding);
+
+            orderRepository.save(order);
+            System.out.println("Order saved successfully!");
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to add order: " + e.getMessage(), e);
+        }
+    }
+
+    private String generateOrderId() {
+        return java.util.UUID.randomUUID().toString();
     }
 }
